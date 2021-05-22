@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.7.0;
+pragma solidity ^0.8.0;
 
 // ============ Imports ============
 
-import "@openzeppelin/contracts/ownership/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
@@ -60,7 +60,7 @@ contract ENSLootbox is Ownable, IERC721Receiver {
     // Sanity check that sent ETH == desired donation value
     require(msg.value == _value, "ENSLootbox: Donation amount does not match spent ETH");
 
-    donatedAmount.add(_value); // Increment total donated amount
+    donatedAmount = donatedAmount.add(_value); // Increment total donated amount
     bounties[_ensId] = bounties[_ensId].add(_value); // Increment bounty for ENS name
 
     // Emit new donation event
@@ -69,14 +69,12 @@ contract ENSLootbox is Ownable, IERC721Receiver {
 
 
   /**
-   * @dev Enables donating an ENS name and claiming bounty if it exists
+   * @dev Enables donating an ENS name and claiming bounty if it exists (requires approval)
    */
   function donateENSName(uint256 _ensId) external {
     // Sanity check to ensure msg.sender owns ENS name
     require(ENSBaseRegistrar.ownerOf(_ensId) == msg.sender, "ENSLootbox: You do not own this ENS Name");
 
-    // Approve this contract for transferring ENS name
-    ENSBaseRegistrar.approve(address(this), _ensId);
     // Transfer ENS name from msg.sender to this contract
     ENSBaseRegistrar.safeTransferFrom(msg.sender, address(this), _ensId);
 
@@ -90,7 +88,7 @@ contract ENSLootbox is Ownable, IERC721Receiver {
       emit LootboxBountyClaimed(msg.sender, _ensId, bounties[_ensId]);
 
       // Decrement donated amount and nullify ENS name bounty
-      donatedAmount.sub(bounties[_ensId]);
+      donatedAmount = donatedAmount.sub(bounties[_ensId]);
       bounties[_ensId] = 0;
     }
   }
@@ -124,7 +122,7 @@ contract ENSLootbox is Ownable, IERC721Receiver {
   /**
    * @dev Implements IERC721Receiver to safely accept ENS name
    */
-  function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata data) external returns (bytes4) {
+  function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata data) override external returns (bytes4) {
     return this.onERC721Received.selector;
   }
 }
