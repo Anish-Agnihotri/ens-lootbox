@@ -1,5 +1,4 @@
 const { expect } = require("chai");
-const { BigNumber } = require("ethers");
 const { ethers, waffle } = require("hardhat");
 const { ENSBaseRegistrarABI } = require("./abi/ENSBaseRegistrar");
 
@@ -14,7 +13,7 @@ const DeployedENSBaseRegistrar = "0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85"; /
 const ethcloutENS =
   "35335197631003614368981001289464312557811210200188364658220803463187799125791";
 
-// Setup contracts
+// Setup contract placeholders
 let LootboxContract;
 let LootboxContractAddress;
 
@@ -28,6 +27,9 @@ const ERROR_MESSAGES = {
   ENS_NOT_OWNED: "ENSLootbox: Lootbox does not own ENS name",
 };
 
+/**
+ * Deploy contracts at beginning of each test
+ */
 async function deploy() {
   // Impersonate Binance
   await hre.network.provider.request({
@@ -66,20 +68,30 @@ async function deploy() {
   const contractWithSigner = ENSLootbox.connect(adminSigner);
   const contract = await contractWithSigner.deploy();
   await contract.deployed();
+
+  // Store contract details to global variables
   LootboxContract = contract;
   LootboxContractAddress = contract.address.toString();
 }
 
+/**
+ * Returns impersonated signer
+ * @param {string} account to impersonate
+ * @returns {ethers.Signer} authenticated as account
+ */
 async function impersonateSigner(account) {
+  // Impersonate account
   await hre.network.provider.request({
     method: "hardhat_impersonateAccount",
     params: [account],
   });
+  // Return ethers signer
   return await ethers.provider.getSigner(account);
 }
 
 describe("ENSLootbox", () => {
   beforeEach(async () => {
+    // Reset hardhat forknet
     await network.provider.request({
       method: "hardhat_reset",
       params: [
@@ -91,6 +103,8 @@ describe("ENSLootbox", () => {
         },
       ],
     });
+
+    // Deploy contracts
     await deploy();
   });
 
@@ -103,11 +117,14 @@ describe("ENSLootbox", () => {
       value: ONE_ETHER,
     });
 
+    // Collect lootbox balance, donatedAmount, and bounties[ethcloutENS]
     const LootboxBalance = await provider.getBalance(LootboxContractAddress);
     const LootboxDonatedAmount = await LootboxContract.donatedAmount();
     const LootboxBountyAmount = await LootboxContract.bounties(ethcloutENS);
 
+    // Expect contract balance === donatedAmount
     expect(LootboxBalance.toString()).to.equal(LootboxDonatedAmount.toString());
+    // Expect donatedAmount === bounties[ethcloutENS]
     expect(LootboxDonatedAmount.toString()).to.equal(
       LootboxBountyAmount.toString()
     );
@@ -117,7 +134,7 @@ describe("ENSLootbox", () => {
     // Impersonate Binance
     await impersonateSigner(Binance);
 
-    // Donate to contract with ENS
+    // Donate to contract with ENS with incorrect value
     const tx = LootboxContract.donateETH("1", ethcloutENS, {
       value: ONE_ETHER,
     });
@@ -159,9 +176,12 @@ describe("ENSLootbox", () => {
       ENSHolderSigner
     );
 
+    // Approve contract for transferring ENS
     await ENSBaseRegistrar.approve(LootboxContractAddress, ethcloutENS);
+    // Donate ENS with no bounty
     await LootboxContractSigner.donateENSName(ethcloutENS);
 
+    // Collect ENS name owner
     const ethcloutENSOwner = await ENSBaseRegistrar.ownerOf(ethcloutENS);
 
     expect(ethcloutENSOwner).to.equal(LootboxContractAddress);
@@ -185,12 +205,15 @@ describe("ENSLootbox", () => {
       ENSHolderSigner
     );
 
+    // Donate ENS name
     await ENSBaseRegistrar.approve(LootboxContractAddress, ethcloutENS);
     await LootboxContractSigner.donateENSName(ethcloutENS);
 
+    // Ensure bounty paid
     const ENSHolderBalance = await provider.getBalance(ENSHolder);
     expect(ENSHolderBalance.gt(ethers.utils.parseEther("100.0")));
 
+    // Ensure appropriate state changes (nullify bounty)
     const LootboxBalance = await provider.getBalance(LootboxContractAddress);
     const LootboxDonatedAmount = await LootboxContract.donatedAmount();
     const LootboxBountyAmount = await LootboxContract.bounties(ethcloutENS);
@@ -210,19 +233,24 @@ describe("ENSLootbox", () => {
       ENSHolderSigner
     );
 
+    // DonateENS name
     await ENSBaseRegistrar.approve(LootboxContractAddress, ethcloutENS);
     await LootboxContractSigner.donateENSName(ethcloutENS);
 
+    // Impersonate admin and withdraw ENS name
     const AdminSigner = await impersonateSigner(adminWallet);
     const LootboxContractAdmin = LootboxContract.connect(AdminSigner);
     await LootboxContractAdmin.removeENSName(ethcloutENS, adminWallet);
 
+    // Check ENS name owner
     const ethcloutENSOwner = await ENSBaseRegistrar.ownerOf(ethcloutENS);
 
+    // Ensure ENS name owner is now Admin EOA
     expect(adminWallet.toLowerCase()).to.equal(ethcloutENSOwner.toLowerCase());
   });
 
   it("Should revert when withdrawing ENS name by admin without contract owning name", async () => {
+    // Try to withdraw an ENS name not owned by the contract
     const AdminSigner = await impersonateSigner(adminWallet);
     const LootboxContractAdmin = LootboxContract.connect(AdminSigner);
     const tx = LootboxContractAdmin.removeENSName(ethcloutENS, adminWallet);
@@ -240,13 +268,16 @@ describe("ENSLootbox", () => {
       value: ethers.utils.parseEther("1000.0"),
     });
 
+    // Let admin withdraw 1,000 surplus ETH
     const AdminSigner = await impersonateSigner(adminWallet);
     const LootboxContractAdmin = LootboxContract.connect(AdminSigner);
     await LootboxContractAdmin.removeIncorrectlyDonatedETH(adminWallet);
 
+    // Check Admin balance to see update
     const AdminBalance = await provider.getBalance(adminWallet);
     expect(AdminBalance.gt(ethers.utils.parseEther("1000.0")));
 
+    // Confirm that contract balance is decremented
     const LootboxBalance = await provider.getBalance(LootboxContractAddress);
     expect(LootboxBalance.toString()).to.equal("0");
   });
@@ -260,10 +291,12 @@ describe("ENSLootbox", () => {
       value: ONE_ETHER,
     });
 
+    // Try to collect ETH excess
     const AdminSigner = await impersonateSigner(adminWallet);
     const LootboxContractAdmin = LootboxContract.connect(AdminSigner);
     const tx = LootboxContractAdmin.removeIncorrectlyDonatedETH(adminWallet);
 
+    // Should fail since no excess exists
     await expect(tx).revertedWith(ERROR_MESSAGES.NO_EXCESS_ETH);
   });
 });

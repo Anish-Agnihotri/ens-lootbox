@@ -2,6 +2,18 @@
 
 Quick hack inspired by [Mike's tweet about celebrity ENS domain donations](https://twitter.com/mikedemarais/status/1395910410063253505).
 
+## Run locally
+
+First, update ETH RPC url in `hardhat.config.js` and `test/main.js`.
+
+```bash
+# Install dependencies
+npm install
+
+# Run tests
+npx hardhat test
+```
+
 ## Flow
 
 **Donator Flow**
